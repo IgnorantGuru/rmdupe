@@ -1,0 +1,477 @@
+#!/bin/bash
+# Script Name: rmdupe    http://igurublog.wordpress.com/downloads/script-rmdupe/ 
+# Requires: 
+# License: GNU GENERAL PUBLIC LICENSE Version 3 http://www.gnu.org/licenses/gpl-3.0.txt
+
+argsneeded=1
+
+help ()
+{
+	cat << EOF
+rmdupe version 1.0.3
+Usage: rmdupe [OPTIONS] FOLDER [...]
+Removes duplicate files in specified folders.  By default, newest duplicates
+ are removed.
+Options:
+-R, -r              search specified folders recursively
+--ref FOLDER        also search FOLDER recursively for copies but don't
+                    remove any files from here (multiple --ref allowed)
+                    Note: files may be removed from a ref folder if that
+                    folder is also a specified folder
+--trash FOLDER      copy duplicate files to FOLDER instead of removing
+--sim               simulate and report duplicates only - no removal
+--quiet             minimize output (disabled if used with --sim)
+--verbose           detailed output
+--old               remove oldest duplicates instead of newest
+--minsize SIZE      limit search to duplicate files SIZE MB and larger
+--maxsize SIZE      limit search to duplicate files SIZE MB and smaller
+--rmcmd "RMCMD"     execute RMCMD instead of rm to remove copies
+                    (may contain arguments, eg: "rm -f" or "shred -u")
+--xdev              don't descend to other filesystems when recursing
+                    specified or ref folders
+Notes: do not use wildcards; symlinks are not followed except on the
+       command line; zero-length files are ignored
+
+Instructions and updates:"
+http://igurublog.wordpress.com/downloads/script-rmdupe/
+
+EOF
+	exit 1
+}
+
+rcount=0
+dcount=0
+xdev=""
+rmcmd="rm"
+while [ "$1" != "" ];
+do
+	if [ "${1:0:1}" = "-" ]; then
+		case "$1" in
+			--help | -help )
+				help
+				;;
+			-r | -R )
+				optrecurse=1
+				;;
+			--xdev | -xdev )
+				xdev="-xdev"
+				;;
+			--sim )
+				optsim=1
+				;;
+			--old )
+				optold=1
+				;;
+			--quiet )
+				optquiet=1
+				;;
+			--verbose )
+				optverbose=1
+				;;
+			--ref )
+				if [ "$2" == "" ] || [ "${2:0:1}" = "-" ]; then
+					echo Option $1 requires argument
+					exit 1
+				fi
+				if [ ! -d "$2" ]; then
+					echo "rmdupe: Error: ref folder \"$2\" does not exist"
+					exit 1
+				fi
+				rfolder[$rcount]="$2"
+				(( rcount += 1 ))
+				shift
+				;;
+			--trash )
+				if [ "$2" == "" ] || [ "${2:0:1}" = "-" ]; then
+					echo Option $1 requires argument
+					exit 1
+				fi
+				if [ "$trash" != "" ]; then
+					echo "rmdupe: Error: only one trash folder allowed"
+					exit 1
+				fi
+				trash="$2"
+				shift
+				;;
+			--rmcmd )
+				if [ "$2" == "" ] || [ "${2:0:1}" = "-" ]; then
+					echo Option $1 requires argument
+					exit 1
+				elif [ "$rmcmd" != "rm" ]; then
+					echo "rmdupe: Error: only one rmcmd accepted"
+					exit 1
+				fi
+				rmcmd="$2"
+				shift
+				;;
+			--minsize )
+				if [ "$2" == "" ] || [ "${2:0:1}" = "-" ]; then
+					echo Option $1 requires argument
+					exit 1
+				fi
+				minsize="$2"
+				if (( minsize < 1 )); then
+					echo "rmdupe: Error: invalid minsize"
+					exit 1
+				fi
+				(( minsize = minsize * 1024 * 1024 ))
+				shift
+				;;
+			--maxsize )
+				if [ "$2" == "" ] || [ "${2:0:1}" = "-" ]; then
+					echo Option $1 requires argument
+					exit 1
+				fi
+				maxsize="$2"
+				if (( maxsize < 1 )); then
+					echo "rmdupe: Error: invalid maxsize"
+					exit 1
+				fi
+				(( maxsize = maxsize * 1024 * 1024 ))
+				shift
+				;;
+			* )
+				echo Unknown option $1
+				exit
+				;;
+		esac
+	else
+		if [ "$1" = "/" ] || [ "$1" = "/." ]; then
+			echo "rmdupe: Error: use on folder / not permitted for safety"
+			exit 1
+		fi
+		if [ "${1:0:1}" != "/" ]; then
+			echo "rmdupe: Error: relative folder spec not permitted for safety"
+			exit 1
+		fi
+		if [ ! -d "$1" ]; then
+			echo "rmdupe: Error: folder \"$1\" does not exist"
+			exit 1
+		fi
+		dfolder[$dcount]="$1"
+		(( dcount += 1 ))
+	fi
+	shift
+done
+if (( dcount == 0 )); then
+	help
+fi
+if [ "$trash" != "" ] && [ "$rmcmd" != "rm" ]; then
+	echo "rmdupe: Error: can't specify both --trash and --rmcmd"
+	exit 1
+fi
+
+removefile () {  # $1=file
+	if (( optquiet != 1 )); then
+		echo "    $rmmsg $1"
+	fi
+	removesize=$(stat -c%s "$1")
+	if [ "$trash" != "" ]; then
+		# trash
+		if (( optsim != 1 )); then
+			# get trash name
+			trashfile=`basename "$1"`
+			ext=${trashfile##*.}
+			if [ "$ext" = "$trashfile" ]; then
+				ext=""
+			fi
+			num=0
+			while [ -e "$trash/$trashfile" ]; do
+				(( num += 1 ))
+				if [ "$ext" = "" ]; then
+					trashfile=`basename "$1"`"-copy$num"
+				else
+					trashfile=`basename "$1" "$ext"`"copy$num.$ext"
+				fi
+			done
+			mv "$1" "$trash/$trashfile"	
+			if [ "$?" != "0" ] || [ -e "$1" ]; then
+				echo "      rmdupe: Error: move to trash failed for copy $1"	
+			else
+				(( removecount += 1 ))
+				((totalsize += removesize ))
+			fi
+		else
+			sremoved[$sremovedcount]="$1"
+			(( sremovedcount += 1 ))
+			(( removecount += 1 ))
+			((totalsize += removesize ))
+		fi		
+	else
+		# remove
+		if (( optverbose == 1 )) && [ "$rmcmd" != "rm" ]; then
+			echo "      > $rmcmd \"$1\""
+		fi
+		if (( optsim == 1 )); then
+			sremoved[$sremovedcount]="$1"
+			(( sremovedcount += 1 ))
+			(( removecount += 1 ))
+			((totalsize += removesize ))
+		else
+			eval $rmcmd \"$1\"
+			if [ -e "$1" ]; then
+				echo "      rmdupe: Error: removal failed of copy $1"
+			else
+				(( removecount += 1 ))
+				((totalsize += removesize ))
+			fi
+		fi
+	fi
+}
+
+simcheck () {	# $1=file
+	# file has been sim-removed?
+	srx=0
+	while (( srx < sremovedcount )); do
+		if [ "$1" = "${sremoved[$srx]}" ]; then
+			return 1
+		fi
+		(( srx += 1 ))
+	done
+	return 0
+}
+
+checkdupe () {  # $1=file   $2="ref"(optional - reference mode);  uses $curfile
+	# $1 or $curfile may be removed in non-reference mode
+	# $curfile may be removed in reference mode
+	# $curfile is set to empty if removed
+
+	if [ "$1" = "$curfile" ]; then
+		return
+	fi
+	# simremoved?
+	if (( optsim == 1 )); then
+		simcheck "$1"
+		if [ "$?" = "0" ]; then
+			simcheck "$curfile"
+			if [ "$?" != "0" ]; then
+				return
+			fi
+		else
+			return
+		fi
+	fi
+	if [ -f "$1" ] && [ -f "$curfile" ]; then
+		if [ "$2" == "ref" ]; then
+			refmsg=" (REF)"
+		else
+			refmsg=""
+		fi
+		# already compared?
+		test1="[$curfile][$1]"
+		test2="[$1][$curfile]"
+		crx=0
+		while (( crx < comparedcount )); do
+			if [ "$test1" = "${compared[$crx]}" ] || [ "$test2" = "${compared[$crx]}" ]; then
+				crx=-1
+				break
+			fi
+			(( crx += 1 ))
+		done
+		if [ "$crx" != "-1" ]; then
+			# compare
+			if (( optverbose == 1 )); then
+				echo "  Comparing to$refmsg: $1"
+			fi
+			cmp -s "$curfile" "$1"
+			if [ "$?" = "0" ]; then
+				# it's a copy
+				if [ "$2" = "ref" ]; then
+					# ref mode
+					removefile "$curfile"
+					curfile=""
+				else
+					# non-ref mode - determine which is older
+					err=0
+					curage=$(stat -c%Z "$curfile")
+					curage="${curage%.*}"  # corrects .000000000 bug in stat
+					if [ "$?" != "0" ] || [ "$curage" = "" ]; then
+						echo "    rmdupe: Error: get timestamp failed on $curfile"
+						err=1
+					fi
+					otherage=$(stat -c%Z "$1")
+					otherage="${otherage%.*}"  # corrects .000000000 bug in stat
+					if [ "$?" != "0" ] || [ "$otherage" = "" ]; then
+						echo "    rmdupe: Error: get timestamp failed on $1"
+						err=1
+					fi
+					if (( err == 0 )); then
+						if (( curage < otherage )); then
+							# curfile older
+							if (( optold == 1 )); then
+								removefile "$curfile"
+								curfile=""
+							else
+								removefile "$1"
+							fi
+						else
+							# $1 older
+							if (( optold == 1 )); then
+								removefile "$1"
+							else
+								removefile "$curfile"
+								curfile=""
+							fi
+						fi
+					fi
+				fi
+			else
+				# not a copy, remember compare
+				compared[$comparedcount]="[$curfile][$1]"
+				(( comparedcount += 1 ))
+			fi
+		else
+			if (( optverbose == 1 )); then
+				echo "  Already compared to$refmsg: $1"
+			fi
+		fi
+	fi
+}
+
+
+# init
+IFS=$'\n'
+sremovedcount=0
+comparedcount=0
+if [ "$trash" != "" ]; then
+	rmmsg="trashing"
+	if (( optsim != 1 )); then
+		mkdir -p "$trash"
+		if [ ! -d "$trash" ]; then
+			echo "rmdupe: Error: trash folder $trash could not be created"
+			exit 1
+		fi
+	fi
+else
+	rmmsg="removing"
+fi
+if (( optsim == 1 )); then 
+	rmmsg="sim-$rmmsg"
+	optquiet=0
+fi
+if (( optverbose == 1 )); then
+	optquiet=0
+fi
+if (( minsize != 0 )) && ((maxsize != 0 )) && (( minsize > maxsize )); then
+	echo "rmdupe: minsize greater than maxsize - nothing to do"
+	exit
+fi
+dfolders=""
+dx=0
+while (( dx < dcount )); do
+	dfolders="$dfolders \"${dfolder[$dx]}\""
+	(( dx += 1 ))
+done
+rfolders=""
+rx=0
+while (( rx < rcount )); do
+	rfolders="$rfolders \"${rfolder[$rx]}\""
+	(( rx += 1 ))
+done
+removecount=0
+
+# find all files in dfolders
+if (( optrecurse == 1 )); then
+	md=""
+else
+	md="-maxdepth 1"
+fi
+flist=`eval find -H $dfolders $xdev $md -type f`
+if [ "$flist" = "" ]; then
+	if (( optquiet != 1 )); then
+		echo "rmdupe: no files found in specified folders - nothing to do"
+	fi
+	exit
+fi
+# check for dupes of files
+for f in $flist; do
+	# simremoved?
+	simremoved=0
+	if (( optsim == 1 )); then
+		simcheck "$f"
+		if [ "$?" != "0" ]; then
+			simremoved=1
+		fi
+	fi
+	if [ -f "$f" ] && (( simremoved == 0 )); then
+		fsize=$(stat -c%s "$f")
+		fsizec="$fsize"c
+		sizeok=1
+		if (( minsize > 0 )) && (( fsize < minsize )); then
+			sizeok=0
+		elif (( maxsize > 0 )) && (( fsize > maxsize )); then
+			sizeok=0
+		fi
+		if [ "$?" != "0" ] || [ "$fsize" = "" ] || (( fsize == 0 )); then
+			if [ "$fsize" != "0" ]; then
+				echo "rmdupe: Error: get filesize failed on $f"
+			elif (( optverbose == 1 )); then
+				echo "Ignoring zero-length file: $f"
+			fi
+		elif (( sizeok == 1 )); then
+			if (( optverbose == 1 )); then
+				echo "Searching for copies of: $f"
+			fi
+			# search dfolders
+			if [ "$dfolders" != "" ]; then  # safety
+				curfile="$f"
+				dlist=`eval find -H $dfolders $xdev $md -type f -size $fsizec`
+				if [ "$dlist" != "" ]; then
+					for df in $dlist; do
+						checkdupe "$df"  # may remove $curfile
+						if [ "$curfile" = "" ]; then
+							curfile="$df"
+							if (( optverbose == 1 )); then
+								echo "XSearching for copies of: $curfile"
+							fi
+						fi
+					done
+				fi
+			fi
+			# search rfolders
+			if [ "$rfolders" != "" ]; then
+				rlist=`eval find -H $rfolders $xdev -type f -size $fsizec`
+				if [ "$rlist" != "" ]; then
+					for rf in $rlist; do
+						checkdupe "$rf" "ref"  # may remove $curfile
+						if [ "$curfile" = "" ]; then
+							break
+						fi
+					done
+				fi
+			fi
+		elif (( optverbose == 1 )); then
+			echo "Skipping $fsize-byte file $f"
+		fi
+	fi
+done
+
+# summary
+if (( optquiet != 1 )); then
+	if (( removecount == 0 )); then
+		echo "No duplicates were found"
+		exit 0
+	elif (( removecount == 1 )); then
+		msg="duplicate was"
+	else
+		msg="duplicates were"
+	fi
+	if [ "$trash" != "" ]; then
+		rmmsg="trashed"
+	else
+		rmmsg="removed"
+	fi
+	(( totalsize = totalsize / 1024 / 1024 ))
+	echo
+	if (( optsim == 1 )); then
+		echo "$removecount $msg sim-$rmmsg (approx $totalsize MB)"
+	else
+		echo "$removecount $msg $rmmsg (approx $totalsize MB)"
+	fi
+fi
+
+exit 0
+
+# CHANGELOG
+# 1.0.3:	corrected for stat %Z .000000000 bug
+

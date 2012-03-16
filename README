@@ -1,0 +1,52 @@
+README for rmdupe
+
+
+OVERVIEW
+    
+rmdupe uses standard linux commands to search within specified folders for 
+duplicate files, regardless of filename or extension. Before duplicate 
+candidates are removed they are compared byte-for-byte. rmdupe can also 
+check duplicates against one or more reference folders, can trash files 
+instead of removing them, allows for a custom removal command, and can 
+limit its search to files of specified size. rmdupe includes a simulation 
+mode which reports what will be done for a given command without actually 
+removing any files.
+
+Homepage & Instructions:
+    http://igurublog.wordpress.com/downloads/script-rmdupe/
+
+Downloads:
+    https://github.com/IgnorantGuru/rmdupe
+    https://github.com/IgnorantGuru/rmdupe/tree/master/packages
+
+Debian/Ubuntu PPA:
+    http://igurublog.wordpress.com/downloads/ppa/
+    
+
+INSTALLATION
+
+To install:
+
+    wget https://github.com/IgnorantGuru/rmdupe/raw/master/rmdupe
+    sudo install rmdupe /usr/local/bin/rmdupe
+
+To remove:
+    
+    sudo rm /usr/local/bin/rmdupe
+
+
+LICENSE
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
