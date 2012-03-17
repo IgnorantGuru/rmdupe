@@ -2,7 +2,8 @@ README for rmdupe
 
 
 OVERVIEW
-    
+========
+
 rmdupe uses standard linux commands to search within specified folders for 
 duplicate files, regardless of filename or extension. Before duplicate 
 candidates are removed they are compared byte-for-byte. rmdupe can also 
@@ -16,14 +17,18 @@ Homepage & Instructions:
     http://igurublog.wordpress.com/downloads/script-rmdupe/
 
 Downloads:
-    https://github.com/IgnorantGuru/rmdupe
+    https://github.com/IgnorantGuru/rmdupe/tags
     https://github.com/IgnorantGuru/rmdupe/tree/master/packages
 
 Debian/Ubuntu PPA:
     http://igurublog.wordpress.com/downloads/ppa/
     
+Bug Reports:
+    https://github.com/IgnorantGuru/rmdupe/issues
+
 
 INSTALLATION
+============
 
 To install:
 
@@ -36,6 +41,7 @@ To remove:
 
 
 LICENSE
+=======
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
