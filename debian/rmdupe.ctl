@@ -9,3 +9,4 @@ Description: Removes duplicate files from specified folders
 Copyright: COPYING
 Changelog: changelog
 Readme: README
+Files: rmdupe /usr/bin/
