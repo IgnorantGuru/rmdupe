@@ -8,7 +8,7 @@ argsneeded=1
 help ()
 {
 	cat << EOF
-rmdupe version 1.0.3
+rmdupe version 1.0.4
 Usage: rmdupe [OPTIONS] FOLDER [...]
 Removes duplicate files in specified folders.  By default, newest duplicates
  are removed.
@@ -170,8 +170,8 @@ removefile () {  # $1=file
 		# trash
 		if (( optsim != 1 )); then
 			# get trash name
-			trashfile=`basename "$1"`
-			ext=${trashfile##*.}
+			trashfile="`basename "$1"`"
+			ext="${trashfile##*.}"
 			if [ "$ext" = "$trashfile" ]; then
 				ext=""
 			fi
@@ -179,9 +179,9 @@ removefile () {  # $1=file
 			while [ -e "$trash/$trashfile" ]; do
 				(( num += 1 ))
 				if [ "$ext" = "" ]; then
-					trashfile=`basename "$1"`"-copy$num"
+					trashfile="`basename "$1"`""-copy$num"
 				else
-					trashfile=`basename "$1" "$ext"`"copy$num.$ext"
+					trashfile="`basename "$1" "$ext"`""copy$num.$ext"
 				fi
 			done
 			mv "$1" "$trash/$trashfile"	
@@ -208,7 +208,9 @@ removefile () {  # $1=file
 			(( removecount += 1 ))
 			((totalsize += removesize ))
 		else
-			eval $rmcmd \"$1\"
+			IFS=' '
+			$rmcmd "$1"
+			IFS=$'\n'
 			if [ -e "$1" ]; then
 				echo "      rmdupe: Error: removal failed of copy $1"
 			else
@@ -330,7 +332,6 @@ checkdupe () {  # $1=file   $2="ref"(optional - reference mode);  uses $curfile
 
 
 # init
-IFS=$'\n'
 sremovedcount=0
 comparedcount=0
 if [ "$trash" != "" ]; then
@@ -383,7 +384,10 @@ if [ "$flist" = "" ]; then
 	fi
 	exit
 fi
+
 # check for dupes of files
+IFSold="$IFS"
+IFS=$'\n'
 for f in $flist; do
 	# simremoved?
 	simremoved=0
@@ -445,6 +449,7 @@ for f in $flist; do
 		fi
 	fi
 done
+IFS="$IFSold"
 
 # summary
 if (( optquiet != 1 )); then
@@ -473,5 +478,6 @@ fi
 exit 0
 
 # CHANGELOG
+# 1.0.4:	fixed cannot remove filenames with special characters #2 #3
 # 1.0.3:	corrected for stat %Z .000000000 bug
 
